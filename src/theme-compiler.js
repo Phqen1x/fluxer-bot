@@ -184,9 +184,18 @@ export function compileTheme(spec) {
     // even when the rest of the theme is a gradient.
     `[class*="headerGlass"] { background: ${shade(9)} !important; }`);
   // The composer stays a plain solid box even with a gradient theme (busy text is hard to
-  // read over a moving gradient), but still needs to win against a competing stylesheet.
+  // read over a moving gradient), but still needs to win against a competing stylesheet,
+  // including its border/focus ring — a competing stylesheet can set those directly too,
+  // bypassing the --floating-surface-ring-color variable the client normally draws them from.
   lines.push('', '/* composer: solid regardless of gradient, legibility over spectacle */',
-    `[class*="composerRoot"], [class*="composerBar"] { background: ${shade(11)} !important; }`);
+    '[class*="composerRoot"], [class*="composerBar"] {',
+    `  background: ${shade(11)} !important;`,
+    `  border-color: ${alpha(A, 30)} !important;`,
+    '}',
+    '[class*="composerRoot"]:focus-within, [class*="composerBar"]:focus-within {',
+    `  border-color: ${A} !important;`,
+    `  box-shadow: 0 0 10px ${alpha(A, 40)} !important;`,
+    '}');
 
   // These are all var-driven in the client's own CSS (--brand-primary, --background-modifier-selected,
   // --text-secondary), which we already set above — but a competing stylesheet that overrides
@@ -194,9 +203,18 @@ export function compileTheme(spec) {
   // so these are matched the same way as the panel backgrounds.
   lines.push('', '/* server icon (no uploaded image), selected channel row, member-list group labels, titlebar controls */',
     // guildIconNoImage: a server with no uploaded icon (shows its initial letter).
-    // clickableItemIcon: the Home/DM and Favorites circles at the top of the rail, and
-    // single-letter DM/group avatars — same idea, different component.
-    `[class*="guildIconNoImage"], [class*="clickableItemIcon"] { background-color: ${shade(12)} !important; color: ${text} !important; }`,
+    // fluxerButtonIcon: the Home and Favorites circles at the top of the rail (confirmed in
+    // GuildsLayout.module.css/FavoritesButton.tsx — a different component from clickableItemIcon
+    // below, which is the individual-DM-conversation-row icon).
+    `[class*="guildIconNoImage"], [class*="fluxerButtonIcon"], [class*="clickableItemIcon"] {`,
+    `  background-color: ${shade(12)} !important; color: ${text} !important;`,
+    '}',
+    // Keep Home/Favorites/DM-row icons in the accent color when active, same reasoning as the
+    // selected channel item below: the blanket rule above would otherwise flatten the active
+    // state to the same color as every other icon.
+    `[class*="fluxerButtonIconSelected"], [class*="clickableItemSelected"] [class*="clickableItemIcon"] {`,
+    `  background-color: ${A} !important; color: ${onBrand} !important;`,
+    '}',
     // `background` (not `background-color`): a competing stylesheet may set the selected
     // row's background via the shorthand (gradient image + fallback color together), and
     // overriding only background-color leaves its background-image showing through on top.
@@ -207,11 +225,9 @@ export function compileTheme(spec) {
     `  background: ${alpha(A, 24)} !important;`,
     `  box-shadow: inset 3px 0 0 ${A} !important;`,
     '}',
-    // Keep the active Home/DM/Favorites icon in the accent color (the client's own CSS does
-    // this via .clickableItemSelected .clickableItemIcon), since the blanket override above
-    // would otherwise flatten the selected state to the same color as every other icon.
-    `[class*="clickableItemSelected"] [class*="clickableItemIcon"] { background-color: ${A} !important; color: ${onBrand} !important; }`,
-    `[class*="groupHeaderLabel"], [data-flx*="member-group-header"] { color: ${A} !important; }`,
+    // groupHeaderLabel is the "ONLINE" text; the separator/count ("— 2") are rendered in
+    // separate elements that weren't covered by targeting the label alone.
+    `[class*="groupHeaderLabel"], [class*="groupHeaderSeparator"], [class*="groupHeaderCount"], [data-flx*="member-group-header"] { color: ${A} !important; }`,
     `.fluxer-native-titlebar__control { color: ${text} !important; }`,
     // A competing stylesheet's `[class*="titlebar"]` matches every one of these by substring
     // too (they're all literally named "fluxer-native-titlebar__..."), painting its own
