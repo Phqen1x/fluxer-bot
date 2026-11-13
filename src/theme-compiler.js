@@ -150,7 +150,11 @@ export function compileTheme(spec) {
   // The server icon rail and the channel list are two separate elements painted over the
   // same shared grid background, not one panel — both need to be listed to get the gradient
   // across the whole left side rather than just the rail or just the list.
-  const sidebarSurface = ['[class*="guildListScrollerWrapper"]', '[class*="channelListScroller"]'];
+  // Excludes channelListScrollerOverBanner for the same reason headerContainer excludes
+  // headerContainerBanner below: that modifier class means a guild banner image is meant to
+  // show through this element, via its own background staying transparent.
+  const sidebarSurface = ['[class*="guildListScrollerWrapper"]',
+    '[class*="channelListScroller"]:not([class*="channelListScrollerOverBanner"])'];
 
   if (grad) {
     // Paint the gradient directly, opaque, on the real chrome surfaces rather than a
@@ -169,10 +173,11 @@ export function compileTheme(spec) {
       memberListSurface.join(',\n') + ` {\n  background: ${shade(8)} !important;\n}`,
       sidebarSurface.join(',\n') + ` {\n  background: ${shade(5)} !important;\n}`);
   }
-  // A banner guild header's own background has to stay transparent regardless of gradient
-  // mode, for the same reason: it's what lets the banner image underneath show at all.
-  lines.push('', '/* let a guild banner image show through its header instead of our background */',
-    '[class*="headerContainerBanner"] { background: transparent !important; }',
+  // A banner guild's header and channel-list-scroller backgrounds have to stay transparent
+  // regardless of gradient mode, for the same reason: it's what lets the banner image
+  // underneath show at all.
+  lines.push('', '/* let a guild banner image show through instead of our background */',
+    '[class*="headerContainerBanner"], [class*="channelListScrollerOverBanner"] { background: transparent !important; }',
     // The scroll-collapse "glass" pane fades in over the banner via its own inline opacity;
     // giving it the full gradient makes that fade look like it's smearing a gradient over the
     // banner, so it stays a plain solid tint (same spirit as the client's own flat default)
