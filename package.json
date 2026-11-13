@@ -1,0 +1,12 @@
+{
+  "name": "fluxer-lemonade-bot",
+  "version": "0.1.0",
+  "description": "Fluxer bot that turns natural language into local client changes (custom CSS first) using a local Lemonade AI server.",
+  "type": "module",
+  "private": true,
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env src/index.js",
+    "test": "node --test \"test/*.test.js\""
+  }
+}
