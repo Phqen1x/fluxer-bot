@@ -128,6 +128,7 @@ export function compileTheme(spec) {
   v['--text-primary-muted'] = `color-mix(in srgb, ${text} 72%, ${B})`;
   v['--text-chat-muted'] = `color-mix(in srgb, ${text} 72%, ${B})`;
   v['--text-tertiary'] = `color-mix(in srgb, ${text} 58%, ${B})`;
+  v['--surface-interactive-selected-color'] = text;
   if (spec.radius !== undefined) v['--outline-radius'] = `${spec.radius}px`;
   if (spec.font) v['--font-sans'] = spec.font;
 
@@ -176,7 +177,10 @@ export function compileTheme(spec) {
   // so these are matched the same way as the panel backgrounds.
   lines.push('', '/* server icon (no uploaded image), selected channel row, member-list group labels, titlebar controls */',
     `[class*="guildIconNoImage"] { background-color: ${shade(12)} !important; color: ${text} !important; }`,
-    `[class*="channelItemSelected"], [class*="channelItemCoreSelected"] { background-color: ${alpha(A, 24)} !important; }`,
+    // `background` (not `background-color`): a competing stylesheet may set the selected
+    // row's background via the shorthand (gradient image + fallback color together), and
+    // overriding only background-color leaves its background-image showing through on top.
+    `[class*="channelItemSelected"], [class*="channelItemCoreSelected"] { background: ${alpha(A, 24)} !important; }`,
     `[class*="groupHeaderLabel"], [data-flx*="member-group-header"] { color: ${A} !important; }`,
     `.fluxer-native-titlebar__control { color: ${text} !important; }`);
 
