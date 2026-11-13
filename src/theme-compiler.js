@@ -193,11 +193,24 @@ export function compileTheme(spec) {
   // the *selector* directly (rather than the variable) still wins over a variable reference,
   // so these are matched the same way as the panel backgrounds.
   lines.push('', '/* server icon (no uploaded image), selected channel row, member-list group labels, titlebar controls */',
-    `[class*="guildIconNoImage"] { background-color: ${shade(12)} !important; color: ${text} !important; }`,
+    // guildIconNoImage: a server with no uploaded icon (shows its initial letter).
+    // clickableItemIcon: the Home/DM and Favorites circles at the top of the rail, and
+    // single-letter DM/group avatars — same idea, different component.
+    `[class*="guildIconNoImage"], [class*="clickableItemIcon"] { background-color: ${shade(12)} !important; color: ${text} !important; }`,
     // `background` (not `background-color`): a competing stylesheet may set the selected
     // row's background via the shorthand (gradient image + fallback color together), and
     // overriding only background-color leaves its background-image showing through on top.
-    `[class*="channelItemSelected"], [class*="channelItemCoreSelected"] { background: ${alpha(A, 24)} !important; }`,
+    // box-shadow: a competing stylesheet can also draw its own accent-colored left stripe via
+    // an inset box-shadow (the client's own CSS doesn't use one at all here), which survives
+    // a background override untouched unless matched directly.
+    `[class*="channelItemSelected"], [class*="channelItemCoreSelected"] {`,
+    `  background: ${alpha(A, 24)} !important;`,
+    `  box-shadow: inset 3px 0 0 ${A} !important;`,
+    '}',
+    // Keep the active Home/DM/Favorites icon in the accent color (the client's own CSS does
+    // this via .clickableItemSelected .clickableItemIcon), since the blanket override above
+    // would otherwise flatten the selected state to the same color as every other icon.
+    `[class*="clickableItemSelected"] [class*="clickableItemIcon"] { background-color: ${A} !important; color: ${onBrand} !important; }`,
     `[class*="groupHeaderLabel"], [data-flx*="member-group-header"] { color: ${A} !important; }`,
     `.fluxer-native-titlebar__control { color: ${text} !important; }`,
     // A competing stylesheet's `[class*="titlebar"]` matches every one of these by substring
