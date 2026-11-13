@@ -194,7 +194,18 @@ export function compileTheme(spec) {
     // overriding only background-color leaves its background-image showing through on top.
     `[class*="channelItemSelected"], [class*="channelItemCoreSelected"] { background: ${alpha(A, 24)} !important; }`,
     `[class*="groupHeaderLabel"], [data-flx*="member-group-header"] { color: ${A} !important; }`,
-    `.fluxer-native-titlebar__control { color: ${text} !important; }`);
+    `.fluxer-native-titlebar__control { color: ${text} !important; }`,
+    // A competing stylesheet's `[class*="titlebar"]` matches every one of these by substring
+    // too (they're all literally named "fluxer-native-titlebar__..."), painting its own
+    // background on each piece individually rather than just the bar as a whole. None of
+    // these are meant to have a visible background of their own in the vanilla design — only
+    // the bar itself (set above) is — so they're reset to transparent across the board.
+    // :not(:hover):not(:active) leaves the buttons' own highlight-on-hover alone.
+    '.fluxer-native-titlebar__left, .fluxer-native-titlebar__wordmark,',
+    '.fluxer-native-titlebar__spacer, .fluxer-native-titlebar__controls,',
+    '.fluxer-native-titlebar__control:not(:hover):not(:active) {',
+    '  background: transparent !important;',
+    '}');
 
   lines.push('', '/* accent-colored selection and focus */',
     `::selection { background: ${alpha(A, 45)} !important; }`);
