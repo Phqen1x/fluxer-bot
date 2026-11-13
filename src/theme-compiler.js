@@ -71,6 +71,14 @@ export function compileTheme(spec) {
   const away = dark ? 'white' : 'black';
   const shade = (p) => `color-mix(in srgb, ${B} ${100 - p}%, ${away} ${p}%)`;
   const alpha = (c, p) => `color-mix(in srgb, ${c} ${p}%, transparent)`;
+  // Every override below exists to out-rank a competing stylesheet's own selector on the same
+  // property, which is a losing bet on document order alone: a competing rule's selector list
+  // can incidentally reach higher specificity on an element we're both targeting (e.g. a
+  // `:not([style*="..."])` branch matching via a shared base class), which wins over equal
+  // !important regardless of which stylesheet loaded later. `:is(sel):is(sel)` doubles our
+  // selector's effective specificity defensively, for any sel, without changing what it matches.
+  const boost = (sel) => `:is(${sel}):is(${sel})`;
+  const rule = (selectors, body) => `${selectors.map(boost).join(',\n')} {\n${body}\n}`;
   const grad = spec.gradient;
   const gradCss = grad && `linear-gradient(${grad.angle}deg, ${grad.colors.join(', ')})`;
 
@@ -161,41 +169,36 @@ export function compileTheme(spec) {
     // page-wide transparent one — see the note at the top of this file for why that
     // doesn't render reliably in this client.
     lines.push('', '/* gradient painted on the chrome surfaces, not relied on to show through others */',
-      ['.fluxer-native-titlebar', ...headerSurface, ...chatSurface, ...memberListSurface, ...sidebarSurface].join(',\n') + ' {',
-      `  background: ${gradCss} !important;`,
-      '}');
+      rule(['.fluxer-native-titlebar', ...headerSurface, ...chatSurface, ...memberListSurface, ...sidebarSurface],
+        `  background: ${gradCss} !important;`));
   } else {
     // No gradient: still beat a competing stylesheet's literal selectors with our solid colors.
     lines.push('', '/* solid chrome surfaces, matching selectors a competing stylesheet might use */',
-      `.fluxer-native-titlebar { background: ${shade(5)} !important; }`,
-      headerSurface.join(',\n') + ` {\n  background: ${shade(9)} !important;\n}`,
-      chatSurface.join(',\n') + ` {\n  background: ${v['--composer-surface-color']} !important;\n}`,
-      memberListSurface.join(',\n') + ` {\n  background: ${shade(8)} !important;\n}`,
-      sidebarSurface.join(',\n') + ` {\n  background: ${shade(5)} !important;\n}`);
+      rule(['.fluxer-native-titlebar'], `  background: ${shade(5)} !important;`),
+      rule(headerSurface, `  background: ${shade(9)} !important;`),
+      rule(chatSurface, `  background: ${v['--composer-surface-color']} !important;`),
+      rule(memberListSurface, `  background: ${shade(8)} !important;`),
+      rule(sidebarSurface, `  background: ${shade(5)} !important;`));
   }
   // A banner guild's header and channel-list-scroller backgrounds have to stay transparent
   // regardless of gradient mode, for the same reason: it's what lets the banner image
   // underneath show at all.
   lines.push('', '/* let a guild banner image show through instead of our background */',
-    '[class*="headerContainerBanner"], [class*="channelListScrollerOverBanner"] { background: transparent !important; }',
+    rule(['[class*="headerContainerBanner"]', '[class*="channelListScrollerOverBanner"]'], '  background: transparent !important;'),
     // The scroll-collapse "glass" pane fades in over the banner via its own inline opacity;
     // giving it the full gradient makes that fade look like it's smearing a gradient over the
     // banner, so it stays a plain solid tint (same spirit as the client's own flat default)
     // even when the rest of the theme is a gradient.
-    `[class*="headerGlass"] { background: ${shade(9)} !important; }`);
+    rule(['[class*="headerGlass"]'], `  background: ${shade(9)} !important;`));
   // The composer stays a plain solid box even with a gradient theme (busy text is hard to
   // read over a moving gradient), but still needs to win against a competing stylesheet,
   // including its border/focus ring — a competing stylesheet can set those directly too,
   // bypassing the --floating-surface-ring-color variable the client normally draws them from.
+  const composerSurface = ['[class*="composerRoot"]', '[class*="composerBar"]'];
   lines.push('', '/* composer: solid regardless of gradient, legibility over spectacle */',
-    '[class*="composerRoot"], [class*="composerBar"] {',
-    `  background: ${shade(11)} !important;`,
-    `  border-color: ${alpha(A, 30)} !important;`,
-    '}',
-    '[class*="composerRoot"]:focus-within, [class*="composerBar"]:focus-within {',
-    `  border-color: ${A} !important;`,
-    `  box-shadow: 0 0 10px ${alpha(A, 40)} !important;`,
-    '}');
+    rule(composerSurface, `  background: ${shade(11)} !important;\n  border-color: ${alpha(A, 30)} !important;`),
+    rule(composerSurface.map((s) => `${s}:focus-within`),
+      `  border-color: ${A} !important;\n  box-shadow: 0 0 10px ${alpha(A, 40)} !important;`));
 
   // These are all var-driven in the client's own CSS (--brand-primary, --background-modifier-selected,
   // --text-secondary), which we already set above — but a competing stylesheet that overrides
@@ -206,40 +209,37 @@ export function compileTheme(spec) {
     // fluxerButtonIcon: the Home and Favorites circles at the top of the rail (confirmed in
     // GuildsLayout.module.css/FavoritesButton.tsx — a different component from clickableItemIcon
     // below, which is the individual-DM-conversation-row icon).
-    `[class*="guildIconNoImage"], [class*="fluxerButtonIcon"], [class*="clickableItemIcon"] {`,
-    `  background-color: ${shade(12)} !important; color: ${text} !important;`,
-    '}',
+    rule(['[class*="guildIconNoImage"]', '[class*="fluxerButtonIcon"]', '[class*="clickableItemIcon"]'],
+      `  background-color: ${shade(12)} !important; color: ${text} !important;`),
     // Keep Home/Favorites/DM-row icons in the accent color when active, same reasoning as the
     // selected channel item below: the blanket rule above would otherwise flatten the active
     // state to the same color as every other icon.
-    `[class*="fluxerButtonIconSelected"], [class*="clickableItemSelected"] [class*="clickableItemIcon"] {`,
-    `  background-color: ${A} !important; color: ${onBrand} !important;`,
-    '}',
+    rule(['[class*="fluxerButtonIconSelected"]', '[class*="clickableItemSelected"] [class*="clickableItemIcon"]'],
+      `  background-color: ${A} !important; color: ${onBrand} !important;`),
     // `background` (not `background-color`): a competing stylesheet may set the selected
     // row's background via the shorthand (gradient image + fallback color together), and
     // overriding only background-color leaves its background-image showing through on top.
     // box-shadow: a competing stylesheet can also draw its own accent-colored left stripe via
     // an inset box-shadow (the client's own CSS doesn't use one at all here), which survives
     // a background override untouched unless matched directly.
-    `[class*="channelItemSelected"], [class*="channelItemCoreSelected"] {`,
-    `  background: ${alpha(A, 24)} !important;`,
-    `  box-shadow: inset 3px 0 0 ${A} !important;`,
-    '}',
+    rule(['[class*="channelItemSelected"]', '[class*="channelItemCoreSelected"]'],
+      `  background: ${alpha(A, 24)} !important;\n  box-shadow: inset 3px 0 0 ${A} !important;`),
     // groupHeaderLabel is the "ONLINE" text; the separator/count ("— 2") are rendered in
     // separate elements that weren't covered by targeting the label alone.
-    `[class*="groupHeaderLabel"], [class*="groupHeaderSeparator"], [class*="groupHeaderCount"], [data-flx*="member-group-header"] { color: ${A} !important; }`,
-    `.fluxer-native-titlebar__control { color: ${text} !important; }`,
+    rule(['[class*="groupHeaderLabel"]', '[class*="groupHeaderSeparator"]', '[class*="groupHeaderCount"]', '[data-flx*="member-group-header"]'],
+      `  color: ${A} !important;`),
+    rule(['.fluxer-native-titlebar__control'], `  color: ${text} !important;`),
     // A competing stylesheet's `[class*="titlebar"]` matches every one of these by substring
     // too (they're all literally named "fluxer-native-titlebar__..."), painting its own
     // background on each piece individually rather than just the bar as a whole. None of
     // these are meant to have a visible background of their own in the vanilla design — only
     // the bar itself (set above) is — so they're reset to transparent across the board.
     // :not(:hover):not(:active) leaves the buttons' own highlight-on-hover alone.
-    '.fluxer-native-titlebar__left, .fluxer-native-titlebar__wordmark,',
-    '.fluxer-native-titlebar__spacer, .fluxer-native-titlebar__controls,',
-    '.fluxer-native-titlebar__control:not(:hover):not(:active) {',
-    '  background: transparent !important;',
-    '}');
+    rule([
+      '.fluxer-native-titlebar__left', '.fluxer-native-titlebar__wordmark',
+      '.fluxer-native-titlebar__spacer', '.fluxer-native-titlebar__controls',
+      '.fluxer-native-titlebar__control:not(:hover):not(:active)',
+    ], '  background: transparent !important;'));
 
   lines.push('', '/* accent-colored selection and focus */',
     `::selection { background: ${alpha(A, 45)} !important; }`);
