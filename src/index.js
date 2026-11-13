@@ -18,23 +18,51 @@ const toolbox = createActions({ llm, store, config, themes: new Themes(endpoints
 
 const gw = new Gateway(rest, config.botToken);
 let selfId = null;
-let busy = Promise.resolve(); // serialize commands so CSS edits never interleave
+// One queue per user, so a user's own edits never interleave but different users' commands
+// run concurrently instead of queuing behind each other.
+const queues = new Map();
+const lastRun = new Map();
+const COOLDOWN_MS = 5000; // keeps one person's spam from piling up LLM calls for everyone else
 
-gw.on('READY', (d) => { selfId = d.user.id; console.log(`Ready as ${d.user.username ?? selfId}. Obeying user ${config.ownerId} only.`); });
+gw.on('READY', (d) => {
+  selfId = d.user.id;
+  const hostNote = config.hostUserId ? `; ${config.hostUserId} also gets the local file/CDP sinks` : '; no local host configured, pure shared-HTTP mode';
+  console.log(`Ready as ${d.user.username ?? selfId}. Serving any user who messages it${hostNote}.`);
+});
 gw.on('warn', (m) => console.warn(m));
 gw.on('fatal', (e) => { console.error(e.message); process.exit(1); });
+let warnedAboutDeletePermission = false;
 gw.on('MESSAGE_CREATE', (msg) => {
-  if (msg.author?.id !== config.ownerId || msg.author.id === selfId) return;
+  const authorId = msg.author?.id;
+  if (!authorId || authorId === selfId) return;
   if (!msg.content?.startsWith(config.prefix)) return;
-  busy = busy.then(async () => {
+  const queue = queues.get(authorId) ?? Promise.resolve();
+  queues.set(authorId, queue.then(async () => {
+    if (config.deleteCommandMessages) {
+      rest.deleteMessage(msg.channel_id, msg.id).catch((e) => {
+        if (warnedAboutDeletePermission) return;
+        warnedAboutDeletePermission = true;
+        console.warn(`Couldn't delete command message (needs MANAGE_MESSAGES in the channel): ${e.message}`);
+      });
+    }
+    // If the command message is being deleted, don't reference it: by the time a reply lands,
+    // the referenced message may already be gone and the reply has nothing to point at.
+    const extra = config.deleteCommandMessages ? {} : { message_reference: { message_id: msg.id } };
+    const now = Date.now();
+    const wait = (lastRun.get(authorId) ?? 0) + COOLDOWN_MS - now;
+    if (wait > 0) {
+      await rest.send(msg.channel_id, `Slow down a bit — try again in ${Math.ceil(wait / 1000)}s.`, extra).catch(() => {});
+      return;
+    }
+    lastRun.set(authorId, now);
     try {
-      const reply = await handle(msg.content, config.prefix, toolbox);
-      if (reply) await rest.send(msg.channel_id, reply, { message_reference: { message_id: msg.id } });
+      const reply = await handle(msg.content, config.prefix, toolbox, authorId);
+      if (reply) await rest.send(msg.channel_id, reply, extra);
     } catch (e) {
       console.error(e);
       await rest.send(msg.channel_id, `⚠️ ${e.message}`).catch(() => {});
     }
-  });
+  }));
 });
 
 await gw.connect();

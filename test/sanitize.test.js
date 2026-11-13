@@ -23,13 +23,29 @@ test('splitMessage respects limit', () => {
 });
 
 import { cleanSpec, compileTheme } from '../src/theme-compiler.js';
-test('compiler: complete, no self references, gradient on html', () => {
+test('compiler: complete, no self references, gradient on real chrome selectors (not html)', () => {
   const css = compileTheme(cleanSpec({
     mode: 'dark', background: '0a2412', accent: '#ef4444',
     gradient: { angle: 135, colors: ['#0a2412', '#14532d'] },
   }));
   assert.match(css, /--background-primary:/);
+  // These two are aliased by the client's own CSS to background-secondary-lighter /
+  // background-secondary, but the compiler sets them directly rather than relying on that.
+  assert.match(css, /--composer-surface-color:/);
+  assert.match(css, /--guild-badge-surface:/);
+  // No `color-mix(..., transparent)` on the panel surfaces themselves (as opposed to
+  // accent-colored hover/selection overlays, which are meant to be translucent): panels
+  // must stay opaque, since the client has opaque ancestors (and a blur filter on
+  // .headerGlass) that make translucent surfaces render as a blend with whatever is
+  // behind them, not the intended color.
+  for (const name of ['--background-primary', '--background-secondary', '--background-secondary-lighter',
+    '--background-tertiary', '--background-channel-header', '--guild-list-foreground', '--composer-surface-color']) {
+    const value = css.match(new RegExp(`${name}:\\s*([^;]+);`))[1];
+    assert.ok(!value.includes('transparent'), `${name} should be opaque, got ${value}`);
+  }
   assert.match(css, /linear-gradient\(135deg/);
+  assert.match(css, /\.fluxer-native-titlebar/);
+  assert.ok(!/^html[\s,{]/m.test(css), 'gradient must not be painted on html (blocked by opaque ancestors)');
   for (const m of css.matchAll(/(--[a-z-]+):\s*([^;]+);/g)) {
     assert.ok(!new RegExp(`var\\(${m[1]}\\)`).test(m[2]), `${m[1]} references itself`);
   }
