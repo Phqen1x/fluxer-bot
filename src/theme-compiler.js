@@ -37,6 +37,53 @@ function luminance(hex) {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 
+function contrastRatio(hexA, hexB) {
+  const a = luminance(hexA);
+  const b = luminance(hexB);
+  return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+}
+
+const hexToRgb = (hex) => {
+  const n = parseInt(hex.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+};
+const rgbToHex = (rgb) => '#' + rgb.map((v) => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, '0')).join('');
+
+/** `pctB`% of hexB mixed into hexA — matches CSS `color-mix(in srgb, hexA (100-pctB)%, hexB)`. */
+function mixHex(hexA, hexB, pctB) {
+  const a = hexToRgb(hexA);
+  const b = hexToRgb(hexB);
+  const t = pctB / 100;
+  return rgbToHex(a.map((v, i) => v + (b[i] - v) * t));
+}
+
+/**
+ * Nudges `fg` toward white or black, away from `bg`, until it clears `minRatio` against it,
+ * preserving as much of the original hue as the floor allows. Always solvable: pure white or
+ * black against any color clears at least ~4.6:1 (the "crossover" point used to choose between
+ * them), which is above every threshold used in this file.
+ */
+function ensureContrast(fgHex, bgHex, minRatio) {
+  if (contrastRatio(fgHex, bgHex) >= minRatio) return fgHex;
+  const extreme = contrastRatio('#ffffff', bgHex) >= contrastRatio('#000000', bgHex) ? '#ffffff' : '#000000';
+  let lo = 0;
+  let hi = 100;
+  let best = extreme;
+  for (let i = 0; i < 24; i++) {
+    const mid = (lo + hi) / 2;
+    const candidate = mixHex(fgHex, extreme, mid);
+    if (contrastRatio(candidate, bgHex) >= minRatio) { best = candidate; hi = mid; } else { lo = mid; }
+  }
+  return best;
+}
+
+// WCAG AA for normal text, applied to the text users actually read (body/message text, links,
+// button labels on a brand-colored surface). MUTED_TEXT_MIN keeps the deliberately-de-emphasized
+// tiers (secondary/tertiary labels, timestamps) visually quieter than primary text without
+// letting them fall below "still clearly legible."
+const TEXT_MIN = 4.5;
+const MUTED_TEXT_MIN = 3;
+
 /** Validate/clean a spec coming from the model. Throws with a useful message. */
 export function cleanSpec(raw) {
   const spec = {};
@@ -82,11 +129,16 @@ export function compileTheme(spec) {
   const grad = spec.gradient;
   const gradCss = grad && `linear-gradient(${grad.angle}deg, ${grad.colors.join(', ')})`;
 
-  const onBrand = luminance(A) > 0.5 ? '#111111' : '#ffffff';
+  // Guaranteed readable against the accent itself (button/badge labels sit directly on it),
+  // not just a luminance guess — luminance > 0.5 picks the right side almost always, but
+  // "almost" still means some accent colors would otherwise land under 4.5:1.
+  const onBrand = ensureContrast(luminance(A) > 0.5 ? '#111111' : '#ffffff', A, TEXT_MIN);
   // Always set a text color, even when the model didn't ask for one: leaving --text-secondary
   // etc. unset doesn't mean "keep the app's default", it means ceding that variable to
-  // whatever competing stylesheet (instance branding, Quick CSS) is also loaded.
-  const text = spec.text ?? (dark ? '#f2f2f5' : '#16161a');
+  // whatever competing stylesheet (instance branding, Quick CSS) is also loaded. Guaranteed
+  // readable against the background even if the model's choice (or ours) wasn't: see
+  // ensureContrast — this never lets the model's color pick end in invisible text.
+  const text = ensureContrast(spec.text ?? (dark ? '#f2f2f5' : '#16161a'), B, TEXT_MIN);
 
   const v = {
     '--background-primary': B,
@@ -126,16 +178,21 @@ export function compileTheme(spec) {
     '--brand-tint-hover': `color-mix(in srgb, ${A} 48%, ${B})`,
     '--brand-tint-border': A,
     '--text-on-brand-primary': onBrand,
-    '--text-link': spec.link ?? `color-mix(in srgb, ${A} 60%, white)`,
+    // Readable against the background a link actually sits on, not just mixed toward white and
+    // hoped for — a dark accent on a light theme, or vice versa, could otherwise land too low.
+    '--text-link': ensureContrast(spec.link ?? mixHex(A, '#ffffff', 40), B, TEXT_MIN),
     '--scrollbar-thumb-bg': alpha(A, 55),
     '--scrollbar-thumb-bg-hover': alpha(A, 80),
   };
   v['--text-primary'] = text;
   v['--text-chat'] = text;
-  v['--text-secondary'] = `color-mix(in srgb, ${text} 88%, ${B})`;
-  v['--text-primary-muted'] = `color-mix(in srgb, ${text} 72%, ${B})`;
-  v['--text-chat-muted'] = `color-mix(in srgb, ${text} 72%, ${B})`;
-  v['--text-tertiary'] = `color-mix(in srgb, ${text} 58%, ${B})`;
+  // Each tier is mixed further toward the background than the last, same as before (that's
+  // the point of a muted hierarchy), but floored at MUTED_TEXT_MIN so none of them can mix
+  // their way into being unreadable — only less prominent than --text-primary.
+  v['--text-secondary'] = ensureContrast(mixHex(text, B, 12), B, MUTED_TEXT_MIN);
+  v['--text-primary-muted'] = ensureContrast(mixHex(text, B, 28), B, MUTED_TEXT_MIN);
+  v['--text-chat-muted'] = v['--text-primary-muted'];
+  v['--text-tertiary'] = ensureContrast(mixHex(text, B, 42), B, MUTED_TEXT_MIN);
   v['--surface-interactive-selected-color'] = text;
   if (spec.radius !== undefined) v['--outline-radius'] = `${spec.radius}px`;
   if (spec.font) v['--font-sans'] = spec.font;
