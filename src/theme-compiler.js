@@ -141,7 +141,10 @@ export function compileTheme(spec) {
   const chatSurface = ['main', '[data-flx="channel.messages.scroller"]',
     '[data-flx="channel.channel-view.channel-view-scaffold.chat-area-slot"]',
     '[class*="messagesArea"]', '[class*="messagesWrapper"]'];
-  const headerSurface = ['header', '[class*="headerContainer"]', '[class*="headerGlass"]'];
+  // Excludes headerContainerBanner: a guild header showing a server banner image sets that
+  // extra class and relies on its own background staying transparent so the banner shows.
+  // Forcing our background on it (gradient or not) painted over/hid the banner.
+  const headerSurface = ['header', '[class*="headerContainer"]:not([class*="headerContainerBanner"])'];
   const memberListSurface = ['aside', '[data-flx="channel.channel-members.member-list-container"]',
     '[data-flx="channel.member-list-container.member-list-scroller"]', '[class*="memberListContainer"]'];
   // The server icon rail and the channel list are two separate elements painted over the
@@ -166,6 +169,15 @@ export function compileTheme(spec) {
       memberListSurface.join(',\n') + ` {\n  background: ${shade(8)} !important;\n}`,
       sidebarSurface.join(',\n') + ` {\n  background: ${shade(5)} !important;\n}`);
   }
+  // A banner guild header's own background has to stay transparent regardless of gradient
+  // mode, for the same reason: it's what lets the banner image underneath show at all.
+  lines.push('', '/* let a guild banner image show through its header instead of our background */',
+    '[class*="headerContainerBanner"] { background: transparent !important; }',
+    // The scroll-collapse "glass" pane fades in over the banner via its own inline opacity;
+    // giving it the full gradient makes that fade look like it's smearing a gradient over the
+    // banner, so it stays a plain solid tint (same spirit as the client's own flat default)
+    // even when the rest of the theme is a gradient.
+    `[class*="headerGlass"] { background: ${shade(9)} !important; }`);
   // The composer stays a plain solid box even with a gradient theme (busy text is hard to
   // read over a moving gradient), but still needs to win against a competing stylesheet.
   lines.push('', '/* composer: solid regardless of gradient, legibility over spectacle */',
