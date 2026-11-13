@@ -1,6 +1,14 @@
 // Compiles a small design spec (chosen by the LLM) into a COMPLETE Fluxer stylesheet.
 // The model only picks colors/intent; code guarantees every variable is real, derived
 // consistently, and that nothing references itself.
+//
+// Surfaces are always opaque. An earlier version made them translucent and painted one
+// gradient on `html` so it would show through every panel; in the real client that gradient
+// sits behind `#fluxer-boot-shell`/`.fluxer-boot-app`, which are opaque unless the desktop
+// "allow transparency" setting is on (off by default), and `.headerGlass` additionally gets
+// `backdrop-filter: blur()` the moment any custom stylesheet is active. Together those meant
+// most panels rendered a blurred blend of whatever was behind them instead of the theme.
+// Gradients are now painted directly, opaque, on the few real chrome elements worth it.
 
 const HEX = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
 
@@ -54,26 +62,29 @@ export function compileTheme(spec) {
   const alpha = (c, p) => `color-mix(in srgb, ${c} ${p}%, transparent)`;
   const grad = spec.gradient;
   const gradCss = grad && `linear-gradient(${grad.angle}deg, ${grad.colors.join(', ')})`;
-  // With a gradient, the big surfaces become translucent so the window-wide gradient shows through.
-  const big = (c) => (grad ? alpha(c, 72) : c);
 
   const onBrand = luminance(A) > 0.5 ? '#111111' : '#ffffff';
   const text = spec.text ?? (dark ? null : '#16161a');
 
   const v = {
-    '--background-primary': big(B),
-    '--background-secondary': big(shade(5)),
+    '--background-primary': B,
+    '--background-secondary': shade(5),
     '--background-secondary-lighter': shade(8),
     '--background-secondary-alt': shade(11),
     '--background-tertiary': shade(15),
-    '--background-channel-header': big(shade(9)),
-    '--channel-header-background': big(shade(9)),
-    '--guild-list-foreground': big(shade(12)),
+    '--background-channel-header': shade(9),
+    '--channel-header-background': shade(9),
+    '--guild-list-foreground': shade(12),
     '--background-header-primary': shade(16),
     '--background-header-secondary': shade(16),
     '--background-header-primary-hover': shade(21),
     '--background-textarea': shade(11),
     '--form-surface-background': shade(11),
+    // Aliased by the client's own CSS (globals.css) to --background-secondary-lighter /
+    // --background-secondary respectively, but set directly here rather than relying on
+    // that indirection: it's what the main chat container and guild badges actually paint.
+    '--composer-surface-color': shade(8),
+    '--guild-badge-surface': shade(5),
     '--panel-control-bg': shade(11),
     '--panel-control-border': alpha(A, 45),
     '--panel-control-divider': alpha(A, 30),
@@ -113,9 +124,16 @@ export function compileTheme(spec) {
   lines.push('}');
 
   if (grad) {
-    lines.push('', '/* one gradient spanning the whole window; translucent panels reveal it */',
-      'html, html.allow-transparency, html.allow-transparency body {',
-      `  background: ${gradCss} fixed !important;`,
+    // Paint the gradient directly on the real chrome surfaces (CSS-module class names are
+    // hashed as `name__local___hash`, so `[local]` substring selectors keep matching across
+    // builds). Left as opaque backgrounds rather than a page-wide transparent one — see the
+    // note at the top of this file for why that doesn't render reliably in this client.
+    lines.push('', '/* gradient painted on the chrome surfaces, not relied on to show through others */',
+      '.fluxer-native-titlebar,',
+      '[class*="headerGlass"],',
+      '[class*="messagesWrapper"],',
+      '[class*="memberListContainer"] {',
+      `  background: ${gradCss} !important;`,
       '}');
   }
   lines.push('', '/* accent-colored selection and focus */',
