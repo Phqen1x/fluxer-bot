@@ -98,19 +98,25 @@ export function createActions({ llm, store, config, themes }) {
     save_profile: {
       doc: 'Save the active CSS as a permanent named profile. args: {"name": string, "upload": boolean}',
       async run({ name, upload }, { userId }) {
-        const file = await store.saveProfile(userId, name);
-        let msg = `Saved profile **${name}** → ${file}`;
+        const css = store.current(userId);
+        await store.saveProfile(userId, name); // still kept server-side too, for `!css load <name>` later
+        let content = [
+          `Saved **${name}**. Download the attached \`${name}.css\` and, in Fluxer:`,
+          '**Settings → Theme Studio → link/import a CSS file** → pick the downloaded file.',
+          "It shows up as its own theme you can switch on or off, separate from whatever's active now.",
+          '(Or skip the toggle and just paste its contents into **Settings → Quick CSS** instead.)',
+        ].join(' ');
         if (upload) {
           // The upload API needs a personal Fluxer session token (bots are rejected with 403),
           // configured once for whoever runs this bot — it can't act on an arbitrary chat
           // user's behalf, so this only works for the host themselves.
           if (userId !== config.hostUserId) {
-            msg += '\n`--upload` only works for the person running this bot (it needs their own Fluxer account token, not something the bot can do on your behalf).';
+            content += '\n`--upload` only works for the person running this bot (it needs their own Fluxer account token, not something the bot can do on your behalf).';
           } else {
-            msg += '\n' + (await themes.upload(store.current(userId)));
+            content += '\n' + (await themes.upload(css));
           }
         }
-        return msg;
+        return { content, file: { filename: `${name}.css`, text: css } };
       },
     },
     load_profile: {

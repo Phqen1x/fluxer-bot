@@ -57,7 +57,9 @@ gw.on('MESSAGE_CREATE', (msg) => {
     lastRun.set(authorId, now);
     try {
       const reply = await handle(msg.content, config.prefix, toolbox, authorId);
-      if (reply) await rest.send(msg.channel_id, reply, extra);
+      if (!reply) { /* nothing to send */ }
+      else if (typeof reply === 'string') await rest.send(msg.channel_id, reply, extra);
+      else await rest.sendFile(msg.channel_id, reply.content, reply.file.filename, reply.file.text, extra);
     } catch (e) {
       console.error(e);
       await rest.send(msg.channel_id, `⚠️ ${e.message}`).catch(() => {});

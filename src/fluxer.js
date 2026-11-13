@@ -45,6 +45,28 @@ export class FluxerRest {
   deleteMessage(channelId, messageId) {
     return this.request('DELETE', `/channels/${channelId}/messages/${messageId}`);
   }
+  // Same multipart shape Discord bots use: a `payload_json` part for the normal message body,
+  // plus `files[n]` parts for each attachment, matched by index — confirmed against Fluxer's
+  // own message-parsing source (FIELD_NAME_PATTERN = /^files\[(\d+)\]$/). fetch sets the
+  // multipart Content-Type/boundary itself for a FormData body; setting it manually breaks it.
+  async sendFile(channelId, content, filename, fileText, extra = {}) {
+    const form = new FormData();
+    form.set('payload_json', JSON.stringify({ content, allowed_mentions: { parse: [] }, ...extra }));
+    form.set('files[0]', new Blob([fileText], { type: 'text/css' }), filename);
+    const res = await fetch(`${this.endpoints.api_public}/v1/channels/${channelId}/messages`, {
+      method: 'POST',
+      headers: { Authorization: `Bot ${this.token}` },
+      body: form,
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (res.status === 429) {
+      const retry = Number((await res.json().catch(() => ({}))).retry_after ?? 1);
+      await new Promise((r) => setTimeout(r, retry * 1000));
+      return this.sendFile(channelId, content, filename, fileText, extra);
+    }
+    if (!res.ok) throw new Error(`Fluxer POST /channels/${channelId}/messages (file) -> ${res.status} ${(await res.text()).slice(0, 200)}`);
+    return res.status === 204 ? null : res.json();
+  }
 }
 
 export function splitMessage(text, max) {

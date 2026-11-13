@@ -33,7 +33,7 @@ Each user's theme, history, and profiles are completely separate — nobody can 
 | `!css new <desc>` | Start from scratch |
 | `!css undo` / `redo` / `reset` / `show` / `list` | History (up to 20 steps each way, survives restarts), clear, print, list profiles |
 | `!css link` | Show your personal CSS URL and how to get it applied automatically |
-| `!css save <name> [--upload]` | Save permanently to your own `data/profiles/<your-id>/<name>.css`; `--upload` only works for `OWNER_USER_ID` (it needs a personal account token — see below) |
+| `!css save <name> [--upload]` | Sends you `<name>.css` as a downloadable file (also kept server-side for `!css load <name>` later); `--upload` only works for `OWNER_USER_ID` (it needs a personal account token — see below) |
 | `!css load <name>` / `delete <name>` | Apply / remove one of your own profiles |
 | `!ai <anything>` | LLM picks the action ("make chat text bigger", "save this as night", "go back") |
 
@@ -104,7 +104,7 @@ to reach it, and it runs locally too, so nothing about this opens your machine u
 one hostname you chose to route.
 
 ## Honest caveats
-- **Untested against a live Fluxer instance** (no instance/token available here). Gateway/REST code follows docs.fluxer.com; the Lemonade → CSS → file/HTTP/profile pipeline was run for real. The CDP injector is untested.
+- **Untested against a live Fluxer instance** (no instance/token available here). Gateway/REST code follows docs.fluxer.com; the Lemonade → CSS → file/HTTP/profile pipeline was run for real. The CDP injector is untested. `!css save`'s file attachment uses the same multipart shape Discord bots use (`payload_json` + `files[0]`), confirmed by reading Fluxer's own message-parsing source (`fluxer_api/.../MessageRequestParser.ts`), but hasn't been sent to a real instance either.
 - I couldn't find where the Fluxer desktop client stores its custom-CSS slot, hence the three sinks above.
 - **How generation works:** the local model never writes raw CSS. It returns a small JSON design spec (base color, optional gradient, accent, light/dark, text/link color, radius, font) and `src/theme-compiler.js` compiles it into a complete stylesheet using Fluxer's real CSS variables (extracted from the client's shipped stylesheets, cross-checked against `fluxerapp/fluxer` on GitHub). That is far more reliable with small models. Limits: it themes colors/gradients/fonts/rounding; it can't restructure layout or hide elements (that needs hand-written selectors; planned as `!css tweak`). Re-extract the variable list / chrome selectors if a Fluxer update renames them.
 - **Surfaces are always opaque, even with a gradient.** An earlier version made panels translucent and painted one gradient on `html` so it would show through everywhere. In the real client that doesn't work: `#fluxer-boot-shell`/`.fluxer-boot-app` are opaque unless the desktop "allow transparency" setting is on (off by default), and the channel header (`.headerGlass`) additionally gets `backdrop-filter: blur()` the moment any custom stylesheet is active — so translucent panels rendered as a blurred blend of whatever was behind them, not the theme. A requested gradient is now painted directly, opaque, on a handful of real chrome elements instead (native titlebar, channel header, message scroller, member list), the same way the working hand-written themes we've seen do it.
