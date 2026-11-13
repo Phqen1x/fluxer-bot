@@ -49,7 +49,11 @@ export function createActions({ llm, store, config, themes }) {
     },
     undo_css: {
       doc: 'Revert the last CSS change. args: {}',
-      async run() { await store.undo(); return 'Reverted to the previous CSS.'; },
+      async run() { await store.undo(); return 'Reverted to the previous CSS. Changed your mind? `!css redo`.'; },
+    },
+    redo_css: {
+      doc: 'Re-apply a CSS change that was just undone. args: {}',
+      async run() { await store.redo(); return 'Re-applied. `!css undo` to go back again.'; },
     },
     show_css: {
       doc: 'Show the active CSS. args: {}',

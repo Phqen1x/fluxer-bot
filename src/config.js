@@ -21,5 +21,7 @@ export function loadConfig() {
     cssOutputPath: path.resolve(env.CSS_OUTPUT_PATH || path.join(dataDir, 'custom.css')),
     cssServerPort: env.CSS_SERVER_PORT ? Number(env.CSS_SERVER_PORT) : 7878,
     cdpUrl: env.CDP_URL || null,
+    // Needs MANAGE_MESSAGES in the channel; off by default since the bot may not have it.
+    deleteCommandMessages: /^(1|true|yes)$/i.test(env.DELETE_COMMAND_MESSAGES || ''),
   };
 }

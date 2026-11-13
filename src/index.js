@@ -23,13 +23,24 @@ let busy = Promise.resolve(); // serialize commands so CSS edits never interleav
 gw.on('READY', (d) => { selfId = d.user.id; console.log(`Ready as ${d.user.username ?? selfId}. Obeying user ${config.ownerId} only.`); });
 gw.on('warn', (m) => console.warn(m));
 gw.on('fatal', (e) => { console.error(e.message); process.exit(1); });
+let warnedAboutDeletePermission = false;
 gw.on('MESSAGE_CREATE', (msg) => {
   if (msg.author?.id !== config.ownerId || msg.author.id === selfId) return;
   if (!msg.content?.startsWith(config.prefix)) return;
   busy = busy.then(async () => {
+    if (config.deleteCommandMessages) {
+      rest.deleteMessage(msg.channel_id, msg.id).catch((e) => {
+        if (warnedAboutDeletePermission) return;
+        warnedAboutDeletePermission = true;
+        console.warn(`Couldn't delete command message (needs MANAGE_MESSAGES in the channel): ${e.message}`);
+      });
+    }
     try {
       const reply = await handle(msg.content, config.prefix, toolbox);
-      if (reply) await rest.send(msg.channel_id, reply, { message_reference: { message_id: msg.id } });
+      // If the command message is being deleted, don't reference it: by the time this send
+      // lands, the referenced message may already be gone and the reply has nothing to point at.
+      const extra = config.deleteCommandMessages ? {} : { message_reference: { message_id: msg.id } };
+      if (reply) await rest.send(msg.channel_id, reply, extra);
     } catch (e) {
       console.error(e);
       await rest.send(msg.channel_id, `⚠️ ${e.message}`).catch(() => {});

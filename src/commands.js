@@ -1,7 +1,7 @@
 // Parses owner messages into actions.
 //   !css <description>            generate/modify CSS from natural language
 //   !css new <description>        start from scratch
-//   !css undo | reset | show | list
+//   !css undo | redo | reset | show | list
 //   !css save <name> [--upload] | load <name> | delete <name>
 //   !ai <anything>                let the local LLM choose the action
 export async function handle(text, prefix, { actions, plan }) {
@@ -20,8 +20,9 @@ export async function handle(text, prefix, { actions, plan }) {
   const name = subRest.find((w) => !w.startsWith('--'));
   switch (sub) {
     case undefined: case 'help':
-      return 'Commands: `!css <describe the look>`, `!css new <…>`, `undo`, `reset`, `show`, `list`, `save <name> [--upload]`, `load <name>`, `delete <name>`, or `!ai <anything>`.';
+      return 'Commands: `!css <describe the look>`, `!css new <…>`, `undo`, `redo`, `reset`, `show`, `list`, `save <name> [--upload]`, `load <name>`, `delete <name>`, or `!ai <anything>`.';
     case 'undo': return actions.undo_css.run({});
+    case 'redo': return actions.redo_css.run({});
     case 'reset': return actions.reset_css.run({});
     case 'show': return actions.show_css.run({});
     case 'list': return actions.list_profiles.run({});

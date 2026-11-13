@@ -23,12 +23,14 @@ no slash commands, so commands are plain `!prefix` messages. The bot therefore r
 |---|---|
 | `!css green gradient with red accents` | Design + apply a theme (modifies the current design if one is active, e.g. `!css make the accent softer`) |
 | `!css new <desc>` | Start from scratch |
-| `!css undo` / `reset` / `show` / `list` | History, clear, print, list profiles |
+| `!css undo` / `redo` / `reset` / `show` / `list` | History (up to 20 steps each way, survives restarts), clear, print, list profiles |
 | `!css save <name> [--upload]` | Save permanently to `data/profiles/<name>.css`; `--upload` also publishes as a Fluxer theme |
 | `!css load <name>` / `delete <name>` | Apply / remove a profile |
 | `!ai <anything>` | LLM picks the action ("make chat text bigger", "save this as night", "go back") |
 
 New capabilities = add an entry to `src/actions.js`; the `!ai` planner discovers it automatically.
+
+Set `DELETE_COMMAND_MESSAGES=true` in `.env` to have the bot delete your `!css ...` messages after handling them (needs `MANAGE_MESSAGES` in the channel). Fluxer bots have no interaction/slash-command system, so there's no ephemeral-message response type to use instead — a reply is always a normal, visible channel message.
 
 ## Getting CSS into the client (one-time setup, then fully automatic)
 **Desktop app (recommended):** it can watch a CSS file and re-apply it on every change.

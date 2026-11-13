@@ -41,6 +41,10 @@ export class FluxerRest {
       });
     }
   }
+  // Needs the MANAGE_MESSAGES permission to delete someone else's message.
+  deleteMessage(channelId, messageId) {
+    return this.request('DELETE', `/channels/${channelId}/messages/${messageId}`);
+  }
 }
 
 export function splitMessage(text, max) {

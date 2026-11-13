@@ -1,5 +1,7 @@
-// Holds the active CSS, an undo history, and named profiles on disk,
+// Holds the active CSS, an undo/redo history, and named profiles on disk,
 // and pushes changes to every configured "sink" (file / HTTP / DevTools).
+// Active CSS + both history stacks are persisted to data/state.json so a restart doesn't
+// lose them.
 import fs from 'node:fs/promises';
 import http from 'node:http';
 import path from 'node:path';
@@ -16,15 +18,37 @@ export class CssStore {
     this.cfg = config;
     this.current = '';
     this.spec = null; // design spec that produced `current` (null for hand-edited CSS)
-    this.history = [];
+    this.history = []; // undo stack
+    this.redoStack = [];
     this.profileDir = path.join(config.dataDir, 'profiles');
+    this.statePath = path.join(config.dataDir, 'state.json');
   }
 
   async init() {
     await fs.mkdir(this.profileDir, { recursive: true });
     await fs.mkdir(path.dirname(this.cfg.cssOutputPath), { recursive: true });
-    try { this.current = (await fs.readFile(this.cfg.cssOutputPath, 'utf8')).replace(/^\/\*\*[\s\S]*?\*\/\s*/, ''); } catch { /* first run */ }
+    if (!(await this.#loadState())) {
+      // No state.json yet (first run on this install, or an install from before it existed):
+      // fall back to just the active CSS file, with empty undo/redo history.
+      try { this.current = (await fs.readFile(this.cfg.cssOutputPath, 'utf8')).replace(/^\/\*\*[\s\S]*?\*\/\s*/, ''); } catch { /* first run */ }
+    }
     if (this.cfg.cssServerPort) this.#serve();
+  }
+
+  async #loadState() {
+    try {
+      const saved = JSON.parse(await fs.readFile(this.statePath, 'utf8'));
+      this.current = saved.current ?? '';
+      this.spec = saved.spec ?? null;
+      this.history = Array.isArray(saved.history) ? saved.history : [];
+      this.redoStack = Array.isArray(saved.redoStack) ? saved.redoStack : [];
+      return true;
+    } catch { return false; }
+  }
+
+  async #saveState() {
+    const data = { current: this.current, spec: this.spec, history: this.history, redoStack: this.redoStack };
+    await fs.writeFile(this.statePath, JSON.stringify(data));
   }
 
   #serve() {
@@ -39,16 +63,32 @@ export class CssStore {
 
   /** Apply new CSS. Returns a report of which sinks succeeded. */
   async apply(css, spec = null, { recordHistory = true } = {}) {
-    if (recordHistory) this.history.push({ css: this.current, spec: this.spec });
-    if (this.history.length > 20) this.history.shift();
+    if (recordHistory) {
+      this.history.push({ css: this.current, spec: this.spec });
+      if (this.history.length > 20) this.history.shift();
+      this.redoStack = []; // a fresh change replaces whatever undo() had set up to redo
+    }
     this.current = css;
     this.spec = spec;
+    await this.#saveState();
     return this.#push();
   }
 
   async undo() {
     if (!this.history.length) throw new Error('Nothing to undo');
+    this.redoStack.push({ css: this.current, spec: this.spec });
+    if (this.redoStack.length > 20) this.redoStack.shift();
     ({ css: this.current, spec: this.spec } = this.history.pop());
+    await this.#saveState();
+    return this.#push();
+  }
+
+  async redo() {
+    if (!this.redoStack.length) throw new Error('Nothing to redo');
+    this.history.push({ css: this.current, spec: this.spec });
+    if (this.history.length > 20) this.history.shift();
+    ({ css: this.current, spec: this.spec } = this.redoStack.pop());
+    await this.#saveState();
     return this.#push();
   }
 
