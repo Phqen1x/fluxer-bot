@@ -9,6 +9,17 @@
 // `backdrop-filter: blur()` the moment any custom stylesheet is active. Together those meant
 // most panels rendered a blurred blend of whatever was behind them instead of the theme.
 // Gradients are now painted directly, opaque, on the few real chrome elements worth it.
+//
+// Those same selectors also matter for a second reason: Fluxer supports CSS set outside
+// this bot entirely — instance-wide branding (set by a self-hosted instance's admin) and a
+// user's own Quick CSS — which can inject a competing stylesheet. The client's own base CSS
+// mostly paints panels via `background-color: var(--background-secondary)` etc. with no
+// !important, so a competing stylesheet's `!important` rule on a literal selector
+// (`[class*="messagesArea"] { background: ... !important }`) wins outright no matter what
+// we set the variable to: there's no variable in the way to lose a tie-break on. Matching
+// those same real selectors ourselves, later in the document, is how we outrank it instead
+// of only touching variables. We still lose to anything injected *after* ours, and this
+// doesn't chase every row-hover/selected-state selector, only panel backgrounds.
 
 const HEX = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
 
@@ -123,19 +134,35 @@ export function compileTheme(spec) {
   for (const [k, val] of Object.entries(v)) lines.push(`  ${k}: ${val} !important;`);
   lines.push('}');
 
+  // CSS-module class names are hashed as `name__local___hash`, so `[class*="local"]`
+  // substring selectors keep matching across builds without needing the exact hash.
+  const chatSurface = ['main', '[data-flx="channel.messages.scroller"]',
+    '[data-flx="channel.channel-view.channel-view-scaffold.chat-area-slot"]',
+    '[class*="messagesArea"]', '[class*="messagesWrapper"]'];
+  const headerSurface = ['header', '[class*="headerContainer"]', '[class*="headerGlass"]'];
+  const memberListSurface = ['aside', '[data-flx="channel.channel-members.member-list-container"]',
+    '[data-flx="channel.member-list-container.member-list-scroller"]', '[class*="memberListContainer"]'];
+
   if (grad) {
-    // Paint the gradient directly on the real chrome surfaces (CSS-module class names are
-    // hashed as `name__local___hash`, so `[local]` substring selectors keep matching across
-    // builds). Left as opaque backgrounds rather than a page-wide transparent one — see the
-    // note at the top of this file for why that doesn't render reliably in this client.
+    // Paint the gradient directly, opaque, on the real chrome surfaces rather than a
+    // page-wide transparent one — see the note at the top of this file for why that
+    // doesn't render reliably in this client.
     lines.push('', '/* gradient painted on the chrome surfaces, not relied on to show through others */',
-      '.fluxer-native-titlebar,',
-      '[class*="headerGlass"],',
-      '[class*="messagesWrapper"],',
-      '[class*="memberListContainer"] {',
+      ['.fluxer-native-titlebar', ...headerSurface, ...chatSurface, ...memberListSurface].join(',\n') + ' {',
       `  background: ${gradCss} !important;`,
       '}');
+  } else {
+    // No gradient: still beat a competing stylesheet's literal selectors with our solid colors.
+    lines.push('', '/* solid chrome surfaces, matching selectors a competing stylesheet might use */',
+      `.fluxer-native-titlebar { background: ${shade(5)} !important; }`,
+      headerSurface.join(',\n') + ` {\n  background: ${shade(9)} !important;\n}`,
+      chatSurface.join(',\n') + ` {\n  background: ${v['--composer-surface-color']} !important;\n}`,
+      memberListSurface.join(',\n') + ` {\n  background: ${shade(8)} !important;\n}`);
   }
+  // The composer stays a plain solid box even with a gradient theme (busy text is hard to
+  // read over a moving gradient), but still needs to win against a competing stylesheet.
+  lines.push('', '/* composer: solid regardless of gradient, legibility over spectacle */',
+    `[class*="composerRoot"], [class*="composerBar"] { background: ${shade(11)} !important; }`);
   lines.push('', '/* accent-colored selection and focus */',
     `::selection { background: ${alpha(A, 45)} !important; }`);
   return lines.join('\n') + '\n';
