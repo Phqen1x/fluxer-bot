@@ -75,7 +75,10 @@ export function compileTheme(spec) {
   const gradCss = grad && `linear-gradient(${grad.angle}deg, ${grad.colors.join(', ')})`;
 
   const onBrand = luminance(A) > 0.5 ? '#111111' : '#ffffff';
-  const text = spec.text ?? (dark ? null : '#16161a');
+  // Always set a text color, even when the model didn't ask for one: leaving --text-secondary
+  // etc. unset doesn't mean "keep the app's default", it means ceding that variable to
+  // whatever competing stylesheet (instance branding, Quick CSS) is also loaded.
+  const text = spec.text ?? (dark ? '#f2f2f5' : '#16161a');
 
   const v = {
     '--background-primary': B,
@@ -119,14 +122,12 @@ export function compileTheme(spec) {
     '--scrollbar-thumb-bg': alpha(A, 55),
     '--scrollbar-thumb-bg-hover': alpha(A, 80),
   };
-  if (text) {
-    v['--text-primary'] = text;
-    v['--text-chat'] = text;
-    v['--text-secondary'] = `color-mix(in srgb, ${text} 88%, ${B})`;
-    v['--text-primary-muted'] = `color-mix(in srgb, ${text} 72%, ${B})`;
-    v['--text-chat-muted'] = `color-mix(in srgb, ${text} 72%, ${B})`;
-    v['--text-tertiary'] = `color-mix(in srgb, ${text} 58%, ${B})`;
-  }
+  v['--text-primary'] = text;
+  v['--text-chat'] = text;
+  v['--text-secondary'] = `color-mix(in srgb, ${text} 88%, ${B})`;
+  v['--text-primary-muted'] = `color-mix(in srgb, ${text} 72%, ${B})`;
+  v['--text-chat-muted'] = `color-mix(in srgb, ${text} 72%, ${B})`;
+  v['--text-tertiary'] = `color-mix(in srgb, ${text} 58%, ${B})`;
   if (spec.radius !== undefined) v['--outline-radius'] = `${spec.radius}px`;
   if (spec.font) v['--font-sans'] = spec.font;
 
@@ -142,13 +143,17 @@ export function compileTheme(spec) {
   const headerSurface = ['header', '[class*="headerContainer"]', '[class*="headerGlass"]'];
   const memberListSurface = ['aside', '[data-flx="channel.channel-members.member-list-container"]',
     '[data-flx="channel.member-list-container.member-list-scroller"]', '[class*="memberListContainer"]'];
+  // The server icon rail and the channel list are two separate elements painted over the
+  // same shared grid background, not one panel — both need to be listed to get the gradient
+  // across the whole left side rather than just the rail or just the list.
+  const sidebarSurface = ['[class*="guildListScrollerWrapper"]', '[class*="channelListScroller"]'];
 
   if (grad) {
     // Paint the gradient directly, opaque, on the real chrome surfaces rather than a
     // page-wide transparent one — see the note at the top of this file for why that
     // doesn't render reliably in this client.
     lines.push('', '/* gradient painted on the chrome surfaces, not relied on to show through others */',
-      ['.fluxer-native-titlebar', ...headerSurface, ...chatSurface, ...memberListSurface].join(',\n') + ' {',
+      ['.fluxer-native-titlebar', ...headerSurface, ...chatSurface, ...memberListSurface, ...sidebarSurface].join(',\n') + ' {',
       `  background: ${gradCss} !important;`,
       '}');
   } else {
@@ -157,12 +162,24 @@ export function compileTheme(spec) {
       `.fluxer-native-titlebar { background: ${shade(5)} !important; }`,
       headerSurface.join(',\n') + ` {\n  background: ${shade(9)} !important;\n}`,
       chatSurface.join(',\n') + ` {\n  background: ${v['--composer-surface-color']} !important;\n}`,
-      memberListSurface.join(',\n') + ` {\n  background: ${shade(8)} !important;\n}`);
+      memberListSurface.join(',\n') + ` {\n  background: ${shade(8)} !important;\n}`,
+      sidebarSurface.join(',\n') + ` {\n  background: ${shade(5)} !important;\n}`);
   }
   // The composer stays a plain solid box even with a gradient theme (busy text is hard to
   // read over a moving gradient), but still needs to win against a competing stylesheet.
   lines.push('', '/* composer: solid regardless of gradient, legibility over spectacle */',
     `[class*="composerRoot"], [class*="composerBar"] { background: ${shade(11)} !important; }`);
+
+  // These are all var-driven in the client's own CSS (--brand-primary, --background-modifier-selected,
+  // --text-secondary), which we already set above — but a competing stylesheet that overrides
+  // the *selector* directly (rather than the variable) still wins over a variable reference,
+  // so these are matched the same way as the panel backgrounds.
+  lines.push('', '/* server icon (no uploaded image), selected channel row, member-list group labels, titlebar controls */',
+    `[class*="guildIconNoImage"] { background-color: ${shade(12)} !important; color: ${text} !important; }`,
+    `[class*="channelItemSelected"], [class*="channelItemCoreSelected"] { background-color: ${alpha(A, 24)} !important; }`,
+    `[class*="groupHeaderLabel"], [data-flx*="member-group-header"] { color: ${A} !important; }`,
+    `.fluxer-native-titlebar__control { color: ${text} !important; }`);
+
   lines.push('', '/* accent-colored selection and focus */',
     `::selection { background: ${alpha(A, 45)} !important; }`);
   return lines.join('\n') + '\n';
